@@ -7,7 +7,33 @@ const OpenAI = require("openai");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// CORS settings
+const allowedOrigins = [
+  "http://localhost:8080",
+  "https://liferay.co.jp",
+  "https://www.liferay.co.jp",
+];
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked: ${origin}`));
+  },
+
+  methods: ["POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "bypass-tunnel-reminder"],
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 app.use(express.json({ limit: "5mb" }));
 
 const client = new OpenAI({
@@ -15,7 +41,7 @@ const client = new OpenAI({
 });
 
 // 要約API
-app.post("/summarize", async (req, res) => {
+app.post("/summarize", cors(corsOptions), async (req, res) => {
   try {
     const { message, blogContents } = req.body;
 

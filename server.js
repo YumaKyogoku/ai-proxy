@@ -44,35 +44,61 @@ const client = new OpenAI({
 app.post("/summarize", cors(corsOptions), async (req, res) => {
   try {
     const { message, blogContents } = req.body;
+    const response = {};
 
-    if (!blogContents) {
-      return res.status(400).json({
-        error: "blogContents is required",
+    if (blogContents) {
+      const responseChat = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: message,
+          },
+          {
+            role: "user",
+            content: blogContents,
+          },
+        ],
+        temperature: 0.3,
+      });
+
+      const summary = responseChat.choices[0].message.content;
+      response["mainPoints"] = summary;
+    }
+
+    res.json(response);
+  } catch (error) {
+    console.error("OpenAI Error:", error);
+
+    if (
+      error.status === 400 &&
+      error.message &&
+      error.message.includes("maximum context length")
+    ) {
+      console.warn("Skipped blog because it exceeded the token limit");
+
+      return res.json({
+        skipped: true,
+        reason: "TOKEN_LIMIT_EXCEEDED",
+        mainPoints: null,
       });
     }
 
-    const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: message,
-        },
-        {
-          role: "user",
-          content: blogContents,
-        },
-      ],
-      temperature: 0.3,
-    });
+    if (
+      error.status === 429 &&
+      error.message &&
+      (error.message.includes("Request too large") ||
+        error.message.includes("tokens per min") ||
+        error.message.includes("TPM"))
+    ) {
+      console.warn("Skipped blog because it exceeded the TPM limit");
 
-    const summary = response.choices[0].message.content;
-
-    res.json({
-      mainPoints: summary,
-    });
-  } catch (error) {
-    console.error("OpenAI Error:", error);
+      return res.json({
+        skipped: true,
+        reason: "TPM_LIMIT_EXCEEDED",
+        mainPoints: null,
+      });
+    }
 
     res.status(500).json({
       error: "Failed to summarize",
